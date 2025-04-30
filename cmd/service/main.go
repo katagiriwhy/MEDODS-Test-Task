@@ -1,11 +1,13 @@
 package main
 
 import (
+	"Medods/models/employee"
 	"crypto/rand"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"net/http"
 	"time"
 
-	"github.com/beevik/guid"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -15,7 +17,7 @@ func getRole(user string) string {
 	if user == "admin" {
 		return "admin"
 	}
-	return "user"
+	return "employee"
 }
 
 func CreateResfreshToker() (string, error) {
@@ -42,7 +44,18 @@ func CreateJWT(username string) (string, error) {
 }
 
 func main() {
-	fmt.Println("Start working!")
-	g := guid.New()
-	fmt.Println(g.String())
+	r := gin.Default()
+	r.GET("/getTokens/:guid", func(c *gin.Context) {
+		guid := c.Param("guid")
+		c.JSON(http.StatusOK, gin.H{
+			"guid": guid,
+		})
+	})
+	r.GET("/ping", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "pong",
+		})
+	})
+	employee.CreateEmployee(r)
+	r.Run(":8080")
 }
