@@ -1,29 +1,25 @@
 package database
 
 import (
-	"context"
+	"Medods/models/user"
+	"fmt"
+	"os"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-package database
+var DB *gorm.DB
 
-import (
-"github.com/jackc/pgx/v4/pgxpool"
-"golang.org/x/net/context"
-)
+func ConnectToDB() {
+	var err error
 
-type DataBase struct {
-	DB *pgxpool.Pool
-}
-
-func CreateDb(connection string) (*DataBase, error) {
-
-	pool, err := pgxpool.Connect(context.Background(), connection)
+	DB, err = gorm.Open(postgres.Open(os.Getenv("DATABASE_URL")), &gorm.Config{})
 	if err != nil {
-		return nil, err
+		panic(fmt.Sprintf("Failed to connect to database: %s", err))
 	}
-
-	return &DataBase{DB: pool}, nil
+	err = DB.AutoMigrate(&user.User{})
+	if err != nil {
+		panic(fmt.Sprintf("Failed to auto-migrate database: %s", err))
+	}
 }
-
