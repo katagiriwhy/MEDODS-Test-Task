@@ -1,4 +1,4 @@
-package user
+package models
 
 import (
 	"gorm.io/gorm"
@@ -6,8 +6,7 @@ import (
 
 type User struct {
 	gorm.Model
-	Username string `gorm:"size:255;not null;unique"`
 	Email    string `gorm:"size:255;not null;unique"`
 	Password string `gorm:"size:255;not null"`
-	IpAddr   string `json:"ip"`
+	GUID     string `gorm:"size:255;not null;unique"`
 }

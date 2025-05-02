@@ -1,7 +1,7 @@
 package database
 
 import (
-	"Medods/models/user"
+	"Medods/models"
 	"fmt"
 	"os"
 
@@ -18,7 +18,7 @@ func ConnectToDB() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to connect to database: %s", err))
 	}
-	err = DB.AutoMigrate(&user.User{})
+	err = DB.AutoMigrate(&models.User{})
 	if err != nil {
 		panic(fmt.Sprintf("Failed to auto-migrate database: %s", err))
 	}

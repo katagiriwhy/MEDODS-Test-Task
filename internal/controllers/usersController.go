@@ -2,17 +2,21 @@ package controllers
 
 import (
 	"Medods/internal/database"
-	"Medods/models/user"
+	"Medods/models"
+	"crypto/rand"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
+var JWTMaker = models.NewTokenMaker(os.Getenv("JWT_SECRET"))
+
 func SignUp(c *gin.Context) {
+
 	var body struct {
 		Email    string `json:"email" binding:"required"`
 		Password string `json:"password" binding:"required"`
@@ -21,12 +25,22 @@ func SignUp(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body: " + err.Error()})
 		return
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.MinCost)
+	guid := c.Param("guid")
+	if guid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No GUID provided"})
+		return
+	}
+	if len(guid) > 32 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GUID provided"})
+		return
+	}
+	fmt.Println(body.Email, body.Password)
+	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate hash" + err.Error()})
 		return
 	}
-	client := user.User{Email: body.Email, Password: string(hash)}
+	client := models.User{Email: body.Email, Password: string(hash), GUID: guid}
 	result := database.DB.Create(&client)
 
 	if result.Error != nil {
@@ -46,8 +60,7 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body: " + err.Error()})
 		return
 	}
-
-	var client user.User
+	var client models.User
 	result := database.DB.Where("email = ?", body.Email).First(&client)
 	if result.Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to find user: " + result.Error.Error()})
@@ -62,7 +75,7 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password: " + err.Error()})
 		return
 	}
-	token, err := CreateJWT(client.ID)
+	token, claims, err := JWTMaker.CreateToken(client.ID, client.Email, c.ClientIP(), 15*time.Minute)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to create token: " + err.Error()})
 		return
@@ -71,15 +84,15 @@ func Login(c *gin.Context) {
 
 }
 
-func CreateJWT(userID uint) (string, error) {
-	claims := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
-		"sub": userID,
-		"exp": time.Now().Add(time.Hour * 24).Unix(),
-		"iat": time.Now().Unix(),
-	})
-	token, err := claims.SignedString([]byte(os.Getenv("JWT_SECRET")))
+func CreateJWT(userID uint, userIP string) (string, error) {
+
+}
+
+func CreateResfreshToken() (string, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
 	if err != nil {
 		return "", err
 	}
-	return token, nil
+	return fmt.Sprintf("%x", b), nil
 }
