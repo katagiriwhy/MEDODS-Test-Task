@@ -18,6 +18,10 @@ func ConnectToDB() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to connect to database: %s", err))
 	}
+	err = DB.Migrator().DropTable(&models.User{})
+	if err != nil {
+		return
+	}
 	err = DB.AutoMigrate(&models.User{})
 	if err != nil {
 		panic(fmt.Sprintf("Failed to auto-migrate database: %s", err))
