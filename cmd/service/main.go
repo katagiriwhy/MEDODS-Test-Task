@@ -3,6 +3,7 @@ package main
 import (
 	"Medods/internal/database"
 	"Medods/routes"
+	"log"
 )
 
 func init() {
@@ -11,5 +12,8 @@ func init() {
 
 func main() {
 	r := routes.NewRoutes()
-	r.Run(":8080")
+	err := r.Run(":8080")
+	if err != nil {
+		log.Fatal(err)
+	}
 }

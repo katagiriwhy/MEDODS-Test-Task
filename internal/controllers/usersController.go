@@ -4,7 +4,6 @@ import (
 	"Medods/internal/database"
 	"Medods/internal/email"
 	"Medods/models"
-	"encoding/base64"
 	"net/http"
 	"os"
 	"time"
@@ -33,12 +32,12 @@ func SignUp(c *gin.Context) {
 		return
 	}
 
-	//if len(guid) > 36 {
-	//	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GUID provided"})
-	//	return
-	//}
+	if len(guid) > 128 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GUID provided, the length must be <= 128"})
+		return
+	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.MinCost)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to generate hash" + err.Error()})
 		return
@@ -52,19 +51,17 @@ func SignUp(c *gin.Context) {
 		return
 	}
 
-	refreshToken, _, err := JWTMaker.CreateToken(client.ID, client.Email, c.ClientIP(), 24*time.Hour)
+	refreshToken, err := models.NewRefreshToken()
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to create a refresh token: " + err.Error()})
-	}
-
-	refreshTokenBase64 := base64.StdEncoding.EncodeToString([]byte(refreshToken))
-
-	hashToken, err := bcrypt.GenerateFromPassword([]byte(refreshTokenBase64), bcrypt.DefaultCost)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to generate hash" + err.Error()})
 		return
 	}
 
+	hashToken, err := bcrypt.GenerateFromPassword([]byte(refreshToken), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to generate hash " + err.Error()})
+		return
+	}
 	client.RefreshToken = string(hashToken)
 
 	result := database.DB.Create(&client)
@@ -79,15 +76,20 @@ func SignUp(c *gin.Context) {
 
 func Login(c *gin.Context) {
 	var body struct {
-		Email    string `json:"email" binding:"required"`
-		Password string `json:"password" binding:"required"`
+		Email        string `json:"email" binding:"required"`
+		Password     string `json:"password" binding:"required"`
+		RefreshToken string `json:"refresh_token" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body: " + err.Error()})
 		return
 	}
+
 	var client models.User
 	result := database.DB.Where("email = ?", body.Email).First(&client)
+
+	CheckIP()
+
 	if result.Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to find user: " + result.Error.Error()})
 		return
@@ -100,6 +102,13 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password: " + err.Error()})
 		return
 	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(client.RefreshToken), []byte(body.RefreshToken)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token: " + err.Error()})
+		return
+	}
+
+	RenewTokens(c, body.RefreshToken, client.Email)
 }
 
 func CheckIP() gin.HandlerFunc {
@@ -107,7 +116,7 @@ func CheckIP() gin.HandlerFunc {
 		tokenString := c.Request.Header.Get("Authorization")
 		if tokenString == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Authorization is required"})
+				"error": "Token is empty"})
 			return
 		}
 		claims, err := JWTMaker.VerifyToken(tokenString)
@@ -123,7 +132,7 @@ func CheckIP() gin.HandlerFunc {
 				err := email.SendEmailWarning(claims.Email, claims.IP, currentIP)
 				if err != nil {
 					c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-						"error": "error occured while sending email"})
+						"error": "error occurred while sending email"})
 					return
 				}
 			}()
@@ -132,4 +141,43 @@ func CheckIP() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+func RenewTokens(c *gin.Context, refreshToken, email string) {
+
+	var user models.User
+
+	if err := database.DB.Where("email = ?", email).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User is not found"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.RefreshToken), []byte(refreshToken)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+		return
+	}
+
+	newAccessToken, _, err := JWTMaker.CreateToken(user.ID, user.Email, c.ClientIP(), 15*time.Minute)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create an access token: " + err.Error()})
+		return
+	}
+
+	newRefreshToken, err := models.NewRefreshToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create a refresh token: " + err.Error()})
+		return
+	}
+
+	hashToken, err := bcrypt.GenerateFromPassword([]byte(newRefreshToken), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Failed to generate hash " + err.Error()})
+		return
+	}
+
+	database.DB.Model(&user).Updates(models.User{
+		RefreshToken: string(hashToken),
+	})
+
+	c.JSON(http.StatusOK, gin.H{"accessToken": newAccessToken, "refreshToken": newRefreshToken})
 }

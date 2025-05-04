@@ -19,7 +19,6 @@ func NewRoutes() *gin.Engine {
 
 	api := r.Group("/api")
 	{
-		api.Use(controllers.CheckIP())
 		api.GET("/refresh", controllers.Login)
 		api.POST("/getTokens/:guid", controllers.SignUp)
 	}

@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -29,6 +30,7 @@ func (maker *TokenMaker) CreateToken(id uint, email string, ip string, duration 
 }
 
 func (maker *TokenMaker) VerifyToken(tokenStr string) (*UserClaims, error) {
+
 	token, err := jwt.ParseWithClaims(tokenStr, &UserClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -42,4 +44,17 @@ func (maker *TokenMaker) VerifyToken(tokenStr string) (*UserClaims, error) {
 		return claims, nil
 	}
 	return nil, fmt.Errorf("invalid token")
+}
+
+func NewRefreshToken() (string, error) {
+	token := make([]byte, 32)
+
+	s := rand.NewSource(time.Now().Unix())
+	r := rand.New(s)
+
+	_, err := r.Read(token)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", token), nil
 }
